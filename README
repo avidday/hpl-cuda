@@ -1,0 +1,46 @@
+-- High Performance Computing Linpack Benchmark for CUDA
+    hpl-cuda - 0.001 - 2010
+
+    David Martin (cuda@avidday.net)
+    (C) Copyright 2010-2011 All Rights Reserved
+
+Seeing the accompanying COPYING file for full details of the
+license and copyright information of the code contained in
+this distribution.
+
+This distribution contains a simple acceleration scheme for
+the standard HPL-2.0 benchmark with a double precision capable
+NVIDIA GPU and the CUBLAS library.
+
+The code has been known to build on Ubuntu 8.04LTS or later and Redhat 5
+and derivatives, using mpich2 and GotoBLAS, with CUDA 2.3 or later.
+
+The supplied Make.CUDA file relies on a number of environment variables
+being set to correctly locate host BLAS and MPI, and CUBLAS libraries
+and include files. Example values for the abovementioned mpich2 and gotoBLAS
+combinations might be:
+
+MPICH2_INSTALL_PATH=/opt/mpich2-1.3
+MPICH2_INCLUDES=-I/opt/mpich2-1.3/include
+MPICH2_LIBRARIES=-L/opt/mpich2-1.3/lib -lmpich -lmpl
+BLAS_INCLUDES=-I/opt/goto/GotoBLAS2/include
+BLAS_LIBRARIES=-L/opt/goto/GotoBLAS2/lib -lgoto2 -lgfortran -lpthread
+CUBLAS_INCLUDES=-I/opt/cuda-3.2/include
+CUBLAS_LIBRARIES=-L/opt/cuda-3.2/lib64 -lcublas -lcudart -lcuda
+
+With these set, it should be possible to build by issuing
+
+$ make arch=CUDA
+
+which will drop the final xhpl executable in the bin/CUDA directory.
+Correct runtime path and link load settings are the responsibility
+of the user.
+
+NOTE: This version of the code only acclerates the transposed form
+of the factorization for a single GPU. The scheduling routine
+gpuUpdatePlanCreate() in auxil/HPL_gpusupport.c contains two
+tuning constants tune0 and tune1, which control the split
+of work between the GPU and host CPU(s). These must be tuned
+for optimal performance with a given GPU and host CPU/BLAS
+combination. How this is done is left as an exercise for the
+reader.
