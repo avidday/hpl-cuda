@@ -13,7 +13,7 @@ the standard HPL-2.0 benchmark with a double precision capable
 NVIDIA GPU and the CUBLAS library.
 
 The code has been known to build on Ubuntu 8.04LTS or later and Redhat 5
-and derivatives, using mpich2 and GotoBLAS, with CUDA 2.3 or later.
+and derivatives, using mpich2 and GotoBLAS, with CUDA 2.2 or later.
 
 The supplied Make.CUDA file relies on a number of environment variables
 being set to correctly locate host BLAS and MPI, and CUBLAS libraries
@@ -36,7 +36,9 @@ which will drop the final xhpl executable in the bin/CUDA directory.
 Correct runtime path and link load settings are the responsibility
 of the user.
 
-NOTE: This version of the code only acclerates the transposed form
+NOTE:
+
+This version of the code only acclerates one section
 of the factorization for a single GPU. The scheduling routine
 gpuUpdatePlanCreate() in auxil/HPL_gpusupport.c contains two
 tuning constants tune0 and tune1, which control the split
@@ -44,3 +46,22 @@ of work between the GPU and host CPU(s). These must be tuned
 for optimal performance with a given GPU and host CPU/BLAS
 combination. How this is done is left as an exercise for the
 reader.
+
+There are a number of further optimizations which can be applied
+to this code - it should be regarded as a starting point rather
+than a definitive version of the benchmark.
+
+DISCLAIMER:
+
+ THIS  SOFTWARE  IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,  INCLUDING,  BUT NOT 
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE UNIVERSITY
+ OR  CONTRIBUTORS  BE  LIABLE FOR ANY  DIRECT,  INDIRECT,  INCIDENTAL,
+ SPECIAL,  EXEMPLARY,  OR  CONSEQUENTIAL DAMAGES  (INCLUDING,  BUT NOT 
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA OR PROFITS; OR BUSINESS INTERRUPTION)  HOWEVER CAUSED AND ON ANY 
+ THEORY OF LIABILITY, WHETHER IN CONTRACT,  STRICT LIABILITY,  OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
