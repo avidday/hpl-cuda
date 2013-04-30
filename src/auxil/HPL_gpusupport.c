@@ -36,17 +36,28 @@
  * This product  includes software  developed at the Frankfurt Institute
  * for Advanced Studies.
  */
-#include <cuda.h>
 #include <cuda_runtime.h>
 #include <cublas.h>
 
 #include "hpl.h"
 #include "hpl_gpusupport.h"
 
-const unsigned int MB = 1<<20;
-static unsigned int reserved, allocated;
+const size_t MB = 1<<20;
+static size_t reserved, allocated;
 static char *pool = NULL;
 static int initialised = gpuWarn;
+
+/*
+ * Assert style error handler for the CUDA runtime API
+ */
+void gpu_assert(cudaError_t code, char *file, int line)
+{
+    if (code != cudaSuccess) 
+    {
+        fprintf(stderr,"gpu_assert: %s %s %d\n", cudaGetErrorString(code), file, line);
+        exit(code);
+    }
+}
 
 /*
  *  Reset the partitioning of the GPU memory
@@ -93,8 +104,8 @@ int gpu_init( char warmup )
     /*
      *  pre-allocate as much GPU memory as possible
      */
-    unsigned int total;
-    gpuQ( cuMemGetInfo( &reserved, &total ) );
+    size_t total;
+    gpuQ( cudaMemGetInfo( &reserved, &total ) );
     while( cudaMalloc( (void**)&pool, reserved ) != cudaSuccess )
     {
         reserved -= MB;
