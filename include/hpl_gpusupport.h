@@ -54,11 +54,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  * ---------------------------------------------------------------------
  */ 
+#include <cublas_v2.h>
 
 #ifndef __GPU_SUPPORT_H__
 #define __GPU_SUPPORT_H__
 
 #define gpuQ(ans) { gpu_assert((ans), __FILE__, __LINE__); }
+#define cublasQ(ans) { cublas_assert((ans), __FILE__, __LINE__); }
 
 #define gpuPass (0)
 #define gpuFail (1)
@@ -100,6 +102,10 @@ struct gpuUpdatePlan
     struct gpuDgemmStage * dgemmStages;     
 };
 
+void gpu_assert(cudaError_t code, char *file, int line);
+void cublas_assert(cublasStatus_t code, char *file, int line);
+
+cublasHandle_t cublas_handle();
 void gpu_malloc_reset( );
 void gpu_release( );
 int gpu_init( char warmup );

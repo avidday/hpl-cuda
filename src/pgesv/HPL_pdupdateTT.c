@@ -53,7 +53,7 @@
 /*
  * Include files
  */
-#include <cublas.h>
+#include <cublas_v2.h>
 #include "hpl.h"
 #include "hpl_gpusupport.h"
 
@@ -115,6 +115,8 @@ void HPL_pdupdateTT
                              nq0, nn, test;
    static int                tswap = 0;
    static HPL_T_SWAP         fswap = HPL_NO_SWP;
+   const double              plus_one = HPL_rone, minus_one = -HPL_rone;
+
 #define LDU                  n
 /* ..
  * .. Executable Statements ..
@@ -201,9 +203,13 @@ void HPL_pdupdateTT
             gpu_upload(jb, nn, &(plan->gA), Aptr, lda);
             gpu_upload(jb, jb, &(plan->gL1), L1ptr, jb);
 
-            cublasDtrsm('L','U','T','U', jb, nn, HPL_rone, 
-                    plan->gL1.ptr, plan->gL1.lda, plan->gA.ptr, plan->gA.lda );
-            gpuQ( cublasGetError() );
+            cublasQ( cublasDtrsm(cublas_handle(),
+                        CUBLAS_SIDE_LEFT, /* 'L' */
+                        CUBLAS_FILL_MODE_UPPER, /* 'U' */
+                        CUBLAS_OP_T, /* 'T' */
+                        CUBLAS_DIAG_UNIT, /* 'U' */ 
+                        jb, nn, &plus_one, 
+                        plan->gL1.ptr, plan->gL1.lda, plan->gA.ptr, plan->gA.lda ) );
 
             gpu_download(jb, nn, Aptr, lda, &(plan->gA));
             gpu_upload(mp, jb, &(plan->gL2), L2ptr, ldl2);
@@ -222,11 +228,13 @@ void HPL_pdupdateTT
 
                 gpu_upload(mp, N1, &(plan->gA2), Mptr(Aptr, jb, N0, lda), lda);
 
-                cublasDgemm('N','N', mp, N1, jb, 
-                        -HPL_rone, plan->gL2.ptr, plan->gL2.lda, 
+                cublasQ( cublasDgemm(cublas_handle(),
+                         CUBLAS_OP_N, /* 'N' */
+                         CUBLAS_OP_N, /* 'N' */ 
+                         mp, N1, jb, 
+                         &minus_one, plan->gL2.ptr, plan->gL2.lda, 
                          Mptr( plan->gA.ptr, 0, N0, plan->gA.lda ), plan->gA.lda, 
-                         HPL_rone, plan->gA2.ptr, plan->gA2.lda );
-                gpuQ( cublasGetError() );
+                         &plus_one, plan->gA2.ptr, plan->gA2.lda ) );
 
                 HPL_dgemm( HplColumnMajor, HplNoTrans, HplNoTrans, mp, N2, jb,
                         -HPL_rone, L2ptr, ldl2, Mptr( Aptr, 0, N0+N1, lda ), lda,

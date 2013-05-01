@@ -37,7 +37,7 @@
  * for Advanced Studies.
  */
 #include <cuda_runtime.h>
-#include <cublas.h>
+#include <cublas_v2.h>
 
 #include "hpl.h"
 #include "hpl_gpusupport.h"
@@ -46,6 +46,7 @@ const size_t MB = 1<<20;
 static size_t reserved, allocated;
 static char *pool = NULL;
 static int initialised = gpuWarn;
+static cublasHandle_t cublas_cntxt;
 
 /*
  * Assert style error handler for the CUDA runtime API
@@ -57,6 +58,52 @@ void gpu_assert(cudaError_t code, char *file, int line)
         fprintf(stderr,"gpu_assert: %s %s %d\n", cudaGetErrorString(code), file, line);
         exit(code);
     }
+}
+
+static const char * cublas_get_errorstring(cublasStatus_t error)
+{
+    switch (error)
+    {
+        case CUBLAS_STATUS_SUCCESS:
+            return "CUBLAS_STATUS_SUCCESS";
+
+        case CUBLAS_STATUS_NOT_INITIALIZED:
+            return "CUBLAS_STATUS_NOT_INITIALIZED";
+
+        case CUBLAS_STATUS_ALLOC_FAILED:
+            return "CUBLAS_STATUS_ALLOC_FAILED";
+
+        case CUBLAS_STATUS_INVALID_VALUE:
+            return "CUBLAS_STATUS_INVALID_VALUE";
+
+        case CUBLAS_STATUS_ARCH_MISMATCH:
+            return "CUBLAS_STATUS_ARCH_MISMATCH";
+
+        case CUBLAS_STATUS_MAPPING_ERROR:
+            return "CUBLAS_STATUS_MAPPING_ERROR";
+
+        case CUBLAS_STATUS_EXECUTION_FAILED:
+            return "CUBLAS_STATUS_EXECUTION_FAILED";
+
+        case CUBLAS_STATUS_INTERNAL_ERROR:
+            return "CUBLAS_STATUS_INTERNAL_ERROR";
+    }
+
+    return "<unknown>";
+}
+
+void cublas_assert(cublasStatus_t code, char *file, int line)
+{
+    if (code != cudaSuccess) 
+    {
+        fprintf(stderr,"cublas_assert: %s %s %d\n", cublas_get_errorstring(code), file, line);
+        exit(code);
+    }
+}
+
+cublasHandle_t cublas_handle()
+{
+    return cublas_cntxt;
 }
 
 /*
@@ -87,7 +134,7 @@ int gpu_init( char warmup )
 
     gpu_release( );
     
-    if( cublasInit() != CUBLAS_STATUS_SUCCESS )
+    if( cublasCreate(&cublas_cntxt) != CUBLAS_STATUS_SUCCESS )
     {
         initialised = gpuFail;
         return initialised;
@@ -111,7 +158,7 @@ int gpu_init( char warmup )
         reserved -= MB;
         if( reserved < MB )
         {
-            gpuQ( cublasShutdown() );
+            gpuQ( cublasDestroy( cublas_cntxt ) );
             initialised = gpuFail;
             return initialised;
         }
@@ -123,11 +170,11 @@ int gpu_init( char warmup )
      */
     if ( warmup ) {
         int m = 128, n = 1;
+        const double alpha = 2.;
         struct gpuArray junk;
-        gpuQ( gpu_malloc2D(m,n,&junk) );
-        cublasDscal( m, 2., junk.ptr, 1 );
-        gpuQ( cublasGetError() );
-        gpuQ( cudaThreadSynchronize() );
+        gpuQ( gpu_malloc2D(m, n, &junk) );
+        cublasQ( cublasDscal( cublas_handle(), m, &alpha, junk.ptr, 1 ) );
+        gpuQ( cudaDeviceSynchronize() );
         gpu_malloc_reset();
     }
 
