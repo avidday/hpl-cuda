@@ -57,6 +57,65 @@
 #include "hpl.h"
 #include "hpl_gpusupport.h"
 
+void gpu_pdupdateTT(struct gpuUpdatePlan * plan ,
+         double * Aptr, double * L1ptr, double * L2ptr,
+         int jb, int lda, int ldl2, int mp, int nn)
+{
+   const double plus_one = HPL_rone, minus_one = -HPL_rone;
+
+   gpu_upload(jb, nn, &(plan->gA), Aptr, lda);
+   gpu_upload(jb, jb, &(plan->gL1), L1ptr, jb);
+
+   cublasQ( cublasDtrsm(cublas_handle(),
+               CUBLAS_SIDE_LEFT, /* 'L' */
+               CUBLAS_FILL_MODE_UPPER, /* 'U' */
+               CUBLAS_OP_T, /* 'T' */
+               CUBLAS_DIAG_UNIT, /* 'U' */ 
+               jb, nn, &plus_one, 
+               plan->gL1.ptr, plan->gL1.lda, plan->gA.ptr, plan->gA.lda ) );
+
+   gpu_download(jb, nn, Aptr, lda, &(plan->gA));
+   gpu_upload(mp, jb, &(plan->gL2), L2ptr, ldl2);
+
+   int iternum = 0;
+   int N0 = 0;
+
+   while (N0 < nn) {
+       int N1, N2;
+       gpuDgemmPlanStage(plan, iternum, &N1, &N2);
+
+#ifdef HPL_CUDA_DIAGNOSTICS
+       HPL_fprintf(stderr, 
+                   "%s {%d}: dtrsmLUTU (m=%5d,n=%5d), "
+                   "dgemmNN (m=%5d,n=%5d,k=%5d,lda=%5d,ldb=%5d,ldc=%5d) "
+                   "[i=%d,n0=%5d,n1=%5d,n2=%5d]\n", 
+                   __FILE__, __LINE__,
+                   jb, nn, 
+                   mp, nn, jb, plan->gL2.lda, plan->gA.lda, plan->gA2.lda, 
+                   iternum, N0, N1, N2);
+#endif
+
+       gpu_upload(mp, N1, &(plan->gA2), Mptr(Aptr, jb, N0, lda), lda);
+
+       cublasQ( cublasDgemm(cublas_handle(),
+                CUBLAS_OP_N, /* 'N' */
+                CUBLAS_OP_N, /* 'N' */ 
+                mp, N1, jb, 
+                &minus_one, plan->gL2.ptr, plan->gL2.lda, 
+                Mptr( plan->gA.ptr, 0, N0, plan->gA.lda ), plan->gA.lda, 
+                &plus_one, plan->gA2.ptr, plan->gA2.lda ) );
+
+       HPL_dgemm( HplColumnMajor, HplNoTrans, HplNoTrans, mp, N2, jb,
+               -HPL_rone, L2ptr, ldl2, Mptr( Aptr, 0, N0+N1, lda ), lda,
+                HPL_rone, Mptr( Aptr, jb, N0+N1, lda ), lda );
+
+       gpu_download(mp, N1, Mptr( Aptr, jb, N0, lda), lda, &(plan->gA2));
+
+       N0 += N1 + N2;
+       iternum++;
+   }
+}
+
     
 #ifdef STDC_HEADERS
 void HPL_pdupdateTT
@@ -141,30 +200,30 @@ void HPL_pdupdateTT
 #endif
       return;
    }
-/*
- * Enable/disable the column panel probing mechanism
- */
+   /*
+    * Enable/disable the column panel probing mechanism
+    */
    (void) HPL_bcast( PBCST, &test );
-/*
- * 1 x Q case
- */
+   /*
+    * 1 x Q case
+    */
    if( PANEL->grid->nprow == 1 )
    {
       Aptr = PANEL->A;       L2ptr = PANEL->L2;   L1ptr = PANEL->L1;
       ldl2 = PANEL->ldl2;    dpiv  = PANEL->DPIV; ipiv  = PANEL->IWORK;
       mp   = PANEL->mp - jb; iroff = PANEL->ii;   nq0   = 0; 
       for( i = 0; i < jb; i++ ) { ipiv[i] = (int)(dpiv[i]) - iroff; }
-/*
- * So far we have not updated anything -  test availability of the panel
- * to be forwarded - If detected forward it and finish the update in one
- * step.
- */
+      /*
+       * So far we have not updated anything -  test availability of the panel
+       * to be forwarded - If detected forward it and finish the update in one
+       * step.
+       */
       while ( test == HPL_KEEP_TESTING )
       {
          nn = n - nq0; nn = Mmin( nb, nn );
-/*
- * Update nb columns at a time
- */
+         /*
+          * Update nb columns at a time
+          */
 #ifdef HPL_DETAILED_TIMING
          HPL_ptimer( HPL_TIMING_LASWP );
          HPL_dlaswp00N( jb, nn, Aptr, lda, ipiv );
@@ -173,7 +232,12 @@ void HPL_pdupdateTT
          HPL_dlaswp00N( jb, nn, Aptr, lda, ipiv );
 #endif
 #ifdef HPL_CUDA_DIAGNOSTICS
-         HPL_fprintf(stderr, "HPL_dpupdateTT.c {1xQ while}: dtrsmLUTU (m=%d,n=%d), dgemmNN (m=%d,n=%d,k=%d)\n", jb, nn, mp, nn, jb);
+         HPL_fprintf(stderr, 
+               "%s {%d}: "
+               "dtrsmLUTU (m=%d,n=%d), "
+               "dgemmNN (m=%d,n=%d,k=%d)\n", 
+               __FILE__, __LINE__, 
+               jb, nn, mp, nn, jb);
 #endif
          HPL_dtrsm( HplColumnMajor, HplLeft, HplUpper, HplTrans,
                     HplUnit, jb, nn, HPL_rone, L1ptr, jb, Aptr, lda );
@@ -185,9 +249,9 @@ void HPL_pdupdateTT
 
          (void) HPL_bcast( PBCST, &test ); 
       }
-/*
- * The panel has been forwarded at that point, finish the update
- */
+      /*
+       * The panel has been forwarded at that point, finish the update
+       */
       if( ( nn = n - nq0 ) > 0 )
       {
 #ifdef HPL_DETAILED_TIMING
@@ -222,8 +286,14 @@ void HPL_pdupdateTT
                 gpuDgemmPlanStage(plan, iternum, &N1, &N2);
 
 #ifdef HPL_CUDA_DIAGNOSTICS
-                HPL_fprintf(stderr, "HPL_dpupdateTT.c {1xQ if}: dtrsmLUTU (m=%5d,n=%5d), dgemmNN (m=%5d,n=%5d,k=%5d,lda=%5d,ldb=%5d,ldc=%5d) [i=%d,n0=%5d,n1=%5d,n2=%5d]\n", 
-                            jb, nn, mp, nn, jb, plan->gL2.lda, plan->gA.lda, plan->gA2.lda, iternum, N0, N1, N2);
+                HPL_fprintf(stderr, 
+                            "%s {%d}: dtrsmLUTU (m=%5d,n=%5d), "
+                            "dgemmNN (m=%5d,n=%5d,k=%5d,lda=%5d,ldb=%5d,ldc=%5d) "
+                            "[i=%d,n0=%5d,n1=%5d,n2=%5d]\n", 
+                            __FILE__, __LINE__,
+                            jb, nn, 
+                            mp, nn, jb, plan->gL2.lda, plan->gA.lda, plan->gA2.lda, 
+                            iternum, N0, N1, N2);
 #endif
 
                 gpu_upload(mp, N1, &(plan->gA2), Mptr(Aptr, jb, N0, lda), lda);
@@ -247,6 +317,14 @@ void HPL_pdupdateTT
             }
 
          } else {
+#ifdef HPL_CUDA_DIAGNOSTICS
+         HPL_fprintf(stderr, 
+               "%s {%d}: "
+               "dtrsmLUTU (m=%d,n=%d), "
+               "dgemmNN (m=%d,n=%d,k=%d)\n", 
+               __FILE__, __LINE__, 
+               jb, nn, mp, nn, jb);
+#endif
              HPL_dtrsm( HplColumnMajor, HplLeft, HplUpper, HplTrans,
                         HplUnit, jb, nn, HPL_rone, L1ptr, jb, Aptr, lda );
              HPL_dgemm( HplColumnMajor, HplNoTrans, HplNoTrans, mp, nn,
@@ -258,9 +336,9 @@ void HPL_pdupdateTT
    }
    else                        /* nprow > 1 ... */
    {
-/*
- * Selection of the swapping algorithm - swap:broadcast U.
- */
+      /*
+       * Selection of the swapping algorithm - swap:broadcast U.
+       */
       if( fswap == HPL_NO_SWP )
       { fswap = PANEL->algo->fswap; tswap = PANEL->algo->fsthr; }
 
@@ -269,22 +347,27 @@ void HPL_pdupdateTT
       { HPL_pdlaswp01T( PBCST, &test, PANEL, n ); }
       else
       { HPL_pdlaswp00T( PBCST, &test, PANEL, n ); }
-/*
- * Compute redundantly row block of U and update trailing submatrix
- */
+      /*
+       * Compute redundantly row block of U and update trailing submatrix
+       */
       nq0 = 0; curr = ( PANEL->grid->myrow == PANEL->prow ? 1 : 0 );
       Aptr = PANEL->A; L2ptr = PANEL->L2;  L1ptr = PANEL->L1;
       Uptr = PANEL->U; ldl2 = PANEL->ldl2;
       mp   = PANEL->mp - ( curr != 0 ? jb : 0 );
-/*
- * Broadcast has not occured yet, spliting the computational part
- */
+      /*
+       * Broadcast has not occured yet, spliting the computational part
+       */
       while ( test == HPL_KEEP_TESTING )
       {
          nn = n - nq0; nn = Mmin( nb, nn );
 
 #ifdef HPL_CUDA_DIAGNOSTICS
-         HPL_fprintf(stderr, "HPL_dpupdateTT.c {PxQ while}: dtrsmLUTU (m=%d,n=%d), dgemmNN (m=%d,n=%d,k=%d)\n", jb, nn, mp, nn, jb);
+         HPL_fprintf(stderr, 
+                     "%s {%d}: "
+                     "dtrsmLUTU (m=%d,n=%d), "
+                     "dgemmNN (m=%d,n=%d,k=%d)\n", 
+                     __FILE__, __LINE__, 
+                     jb, nn, mp, nn, jb);
 #endif
          HPL_dtrsm( HplColumnMajor, HplRight, HplUpper, HplNoTrans,
                     HplUnit, nn, jb, HPL_rone, L1ptr, jb, Uptr, LDU );
@@ -307,13 +390,17 @@ void HPL_pdupdateTT
 
          (void) HPL_bcast( PBCST, &test ); 
       }
-/*
- * The panel has been forwarded at that point, finish the update
- */
+      /*
+       * The panel has been forwarded at that point, finish the update
+       */
       if( ( nn = n - nq0 ) > 0 )
       {
 #ifdef HPL_CUDA_DIAGNOSTICS
-        HPL_fprintf(stderr, "HPL_dpupdateTT.c {PxQ if}: dtrsmLUTU (m=%d,n=%d), dgemmNN (m=%d,n=%d,k=%d)\n", 
+        HPL_fprintf(stderr, 
+                    "%s {%d}: " 
+                    "dtrsmLUTU (m=%d,n=%d), "
+                    "dgemmNN (m=%d,n=%d,k=%d)\n", 
+                    __FILE__, __LINE__, 
                     jb, nn, mp, nn, jb);
 #endif
          HPL_dtrsm( HplColumnMajor, HplRight, HplUpper, HplNoTrans,
@@ -336,10 +423,10 @@ void HPL_pdupdateTT
    }
 
    PANEL->A = Mptr( PANEL->A, 0, n, lda ); PANEL->nq -= n; PANEL->jj += n;
-/*
- * return the outcome of the probe  (should always be  HPL_SUCCESS,  the
- * panel broadcast is enforced in that routine).
- */
+   /*
+    * return the outcome of the probe  (should always be  HPL_SUCCESS,  the
+    * panel broadcast is enforced in that routine).
+    */
    if( PBCST != NULL ) *IFLAG = test;
 #ifdef HPL_DETAILED_TIMING
    HPL_ptimer( HPL_TIMING_UPDATE );

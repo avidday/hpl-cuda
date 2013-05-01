@@ -145,7 +145,9 @@ int gpu_init( char warmup )
     struct cudaDeviceProp prop;
     gpuQ( cudaGetDevice( &idevice ) );
     gpuQ( cudaGetDeviceProperties( &prop, idevice ) );
-    HPL_fprintf(stderr, "HPL_gpusupport.c: using device %s, %.0f MHz clock, %.0f MB memory.\n", prop.name, prop.clockRate/1000.f, prop.totalGlobalMem/1048576.f);
+    HPL_fprintf(stderr, 
+                "HPL_gpusupport.c: using device %s, %.0f MHz clock, %.0f MB memory.\n", 
+                prop.name, prop.clockRate/1000.f, prop.totalGlobalMem/1048576.f);
 #endif
 
     /*

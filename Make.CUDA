@@ -183,7 +183,7 @@ HPL_DEFS     = $(F2CDEFS) $(HPL_OPTS) $(HPL_INCLUDES)
 CC           = gcc
 CXX          = g++
 CCNOOPT      = $(HPL_DEFS)
-CCFLAGS      = $(HPL_DEFS) -O3 -funroll-loops -fPIC -m64 -msse2 -W -Wall
+CCFLAGS      = $(HPL_DEFS) -O3 -funroll-loops -fPIC -m64 -msse2 -W -Wall -DHPL_CUDA_DIAGNOSTICS
 #CCFLAGS      = $(HPL_DEFS) -O0 -g -pg -fPIC -m64 -msse2 -W -Wall
 #
 LINKER       = gfortran
