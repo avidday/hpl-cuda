@@ -261,62 +261,7 @@ void HPL_pdupdateTT
 #else
          HPL_dlaswp00N( jb, nn, Aptr, lda, ipiv );
 #endif
-         struct gpuUpdatePlan * plan = gpuUpdatePlanCreate(mp, nn, jb);
 
-         if (plan->strategy != gpuNone) {
-            gpu_upload(jb, nn, &(plan->gA), Aptr, lda);
-            gpu_upload(jb, jb, &(plan->gL1), L1ptr, jb);
-
-            cublasQ( cublasDtrsm(cublas_handle(),
-                        CUBLAS_SIDE_LEFT, /* 'L' */
-                        CUBLAS_FILL_MODE_UPPER, /* 'U' */
-                        CUBLAS_OP_T, /* 'T' */
-                        CUBLAS_DIAG_UNIT, /* 'U' */ 
-                        jb, nn, &plus_one, 
-                        plan->gL1.ptr, plan->gL1.lda, plan->gA.ptr, plan->gA.lda ) );
-
-            gpu_download(jb, nn, Aptr, lda, &(plan->gA));
-            gpu_upload(mp, jb, &(plan->gL2), L2ptr, ldl2);
-
-            int iternum=0;
-            int N0 = 0;
-
-            while (N0 < nn) {
-                int N1, N2;
-                gpuDgemmPlanStage(plan, iternum, &N1, &N2);
-
-#ifdef HPL_CUDA_DIAGNOSTICS
-                HPL_fprintf(stderr, 
-                            "%s {%d}: dtrsmLUTU (m=%5d,n=%5d), "
-                            "dgemmNN (m=%5d,n=%5d,k=%5d,lda=%5d,ldb=%5d,ldc=%5d) "
-                            "[i=%d,n0=%5d,n1=%5d,n2=%5d]\n", 
-                            __FILE__, __LINE__,
-                            jb, nn, 
-                            mp, nn, jb, plan->gL2.lda, plan->gA.lda, plan->gA2.lda, 
-                            iternum, N0, N1, N2);
-#endif
-
-                gpu_upload(mp, N1, &(plan->gA2), Mptr(Aptr, jb, N0, lda), lda);
-
-                cublasQ( cublasDgemm(cublas_handle(),
-                         CUBLAS_OP_N, /* 'N' */
-                         CUBLAS_OP_N, /* 'N' */ 
-                         mp, N1, jb, 
-                         &minus_one, plan->gL2.ptr, plan->gL2.lda, 
-                         Mptr( plan->gA.ptr, 0, N0, plan->gA.lda ), plan->gA.lda, 
-                         &plus_one, plan->gA2.ptr, plan->gA2.lda ) );
-
-                HPL_dgemm( HplColumnMajor, HplNoTrans, HplNoTrans, mp, N2, jb,
-                        -HPL_rone, L2ptr, ldl2, Mptr( Aptr, 0, N0+N1, lda ), lda,
-                         HPL_rone, Mptr( Aptr, jb, N0+N1, lda ), lda );
-
-                gpu_download(mp, N1, Mptr( Aptr, jb, N0, lda), lda, &(plan->gA2));
-
-                N0 += N1 + N2;
-                iternum++;
-            }
-
-         } else {
 #ifdef HPL_CUDA_DIAGNOSTICS
          HPL_fprintf(stderr, 
                "%s {%d}: "
@@ -325,6 +270,11 @@ void HPL_pdupdateTT
                __FILE__, __LINE__, 
                jb, nn, mp, nn, jb);
 #endif
+         struct gpuUpdatePlan * plan = gpuUpdatePlanCreate(mp, nn, jb);
+
+         if (plan->strategy != gpuNone) {
+            gpu_pdupdateTT(plan, Aptr, L1ptr, L2ptr, jb, lda, ldl2, mp, nn);
+         } else {
              HPL_dtrsm( HplColumnMajor, HplLeft, HplUpper, HplTrans,
                         HplUnit, jb, nn, HPL_rone, L1ptr, jb, Aptr, lda );
              HPL_dgemm( HplColumnMajor, HplNoTrans, HplNoTrans, mp, nn,
