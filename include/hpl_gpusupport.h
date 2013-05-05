@@ -68,9 +68,9 @@
 
 struct gpuArray
 {
-    double       *ptr;
+    char* ptr;
     unsigned int lda;
-    unsigned int size;
+    size_t size;
 };
 
 enum gpuUpdateStrategy
@@ -110,10 +110,10 @@ void gpu_malloc_reset( );
 void gpu_release( );
 int gpu_init( char warmup );
 int gpu_ready(unsigned int *memory );
-int gpu_malloc2D( int m, int n, struct gpuArray *p );
-void gpu_upload( const int m, const int n, struct gpuArray *dst, const double *src, const int srclda);
-void gpu_download( const int m, const int n, double *dst, const int dstlda, struct gpuArray *src);
-void gpu_copy( const int m, const int n, struct gpuArray *dst, struct gpuArray *src );
+int gpu_malloc2D( int m, int n, size_t tsize, struct gpuArray *p );
+void gpu_upload( const int m, const int n, const size_t tsize, struct gpuArray *dst, const void *src, const int srclda);
+void gpu_download( const int m, const int n, const size_t tsize, const void *dst, const int dstlda, struct gpuArray *src);
+void gpu_copy( const int m, const int n, const size_t tsize, struct gpuArray *dst, struct gpuArray *src );
 
 struct gpuUpdatePlan * gpuUpdatePlanCreate(int mp, int nn, int jb);
 void gpuUpdatePlanDestroy(struct gpuUpdatePlan * plan);

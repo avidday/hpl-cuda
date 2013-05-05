@@ -157,6 +157,9 @@ int gpu_init( char warmup )
     gpuQ( cudaMemGetInfo( &reserved, &total ) );
     while( cudaMalloc( (void**)&pool, reserved ) != cudaSuccess )
     {
+#ifdef HPL_CUDA_DIAGNOSTICS
+    HPL_fprintf(stderr, "HPL_gpusupport.c: trying to reserve %d memory\n", reserved);
+#endif
         reserved -= MB;
         if( reserved < MB )
         {
@@ -166,16 +169,21 @@ int gpu_init( char warmup )
         }
     }
     
-    /* This takes up overheads that would otherwise reduce the performance
-     * of "real" calls. Using double precision should ensure we get a warning 
+#ifdef HPL_CUDA_DIAGNOSTICS
+    HPL_fprintf(stderr, "HPL_gpusupport.c: reserved %d memory\n", reserved);
+#endif
+
+    /*
+     * Test CUBLAS to make sure everything is working. 
+     * Using double precision should ensure we get a warning 
      * or error if trying to use a < 1.3 compute capable device.
      */
     if ( warmup ) {
         int m = 128, n = 1;
         const double alpha = 2.;
         struct gpuArray junk;
-        gpuQ( gpu_malloc2D(m, n, &junk) );
-        cublasQ( cublasDscal( cublas_handle(), m, &alpha, junk.ptr, 1 ) );
+        gpuQ( gpu_malloc2D(m, n, sizeof(double), &junk) );
+        cublasQ( cublasDscal( cublas_handle(), m, &alpha, (double *)junk.ptr, 1 ) );
         gpuQ( cudaDeviceSynchronize() );
         gpu_malloc_reset();
     }
@@ -204,7 +212,7 @@ int gpu_ready(unsigned int *memory )
 /*
  *  Get a piece of the allocated GPU memory
  */
-int gpu_malloc2D( int m, int n, struct gpuArray *p )
+int gpu_malloc2D( int m, int n, size_t tsize, struct gpuArray *p )
 {
 
     if( m <= 0 || n <= 0 ) {
@@ -227,10 +235,10 @@ int gpu_malloc2D( int m, int n, struct gpuArray *p )
     /*
      *  allocate memory
      */
-    unsigned int size = sizeof(double) * m_padded * n_padded;
+    size_t size = tsize * m_padded * n_padded;
     if( allocated + size <= reserved )
     {
-        p->ptr = (double*)(pool + allocated);
+        p->ptr = pool + allocated;
         p->lda = m_padded;
         p->size = size;
 
@@ -246,28 +254,28 @@ int gpu_malloc2D( int m, int n, struct gpuArray *p )
     } 
 }
 
-void gpu_upload( const int m, const int n, struct gpuArray *dst, const double *src, const int srclda)
+void gpu_upload( const int m, const int n, const size_t tsize, struct gpuArray* dst, const void* src, const int srclda)
 {       
     if( m > 0 && n > 0 )
-        gpuQ( cudaMemcpy2D( dst->ptr, dst->lda*sizeof(double), 
-                            src, srclda*sizeof(double),
-                            m*sizeof(double), n, cudaMemcpyHostToDevice ) );
+        gpuQ( cudaMemcpy2D( dst->ptr, dst->lda * tsize,
+                            src, srclda * tsize,
+                            m * tsize, n, cudaMemcpyHostToDevice ) );
 }       
 
-void gpu_download( const int m, const int n, double *dst, const int dstlda, struct gpuArray *src )
+void gpu_download( const int m, const int n, const size_t tsize, const void* dst, const int dstlda, struct gpuArray* src )
 {       
     if( m > 0 && n > 0 )
-        gpuQ( cudaMemcpy2D( dst, dstlda*sizeof(double), 
-                            src->ptr, src->lda*sizeof(double), 
-                            m*sizeof(double), n, cudaMemcpyDeviceToHost ) );
+        gpuQ( cudaMemcpy2D( dst, dstlda * tsize, 
+                            src->ptr, src->lda * tsize, 
+                            m * tsize, n, cudaMemcpyDeviceToHost ) );
 }       
 
-void gpu_copy( const int m, const int n, struct gpuArray *dst, struct gpuArray *src )
+void gpu_copy( const int m, const int n, const size_t tsize, struct gpuArray *dst, struct gpuArray *src )
 {       
     if( m > 0 && n > 0 )
-        gpuQ( cudaMemcpy2D( dst->ptr, dst->lda*sizeof(double), 
-                            src->ptr, src->lda*sizeof(double), 
-                            m*sizeof(double), n, cudaMemcpyDeviceToDevice ) );
+        gpuQ( cudaMemcpy2D( dst->ptr, dst->lda * tsize, 
+                            src->ptr, src->lda * tsize, 
+                            m * tsize, n, cudaMemcpyDeviceToDevice ) );
 }       
 
 struct gpuUpdatePlan * gpuUpdatePlanCreate(int mp, int nn, int jb)
@@ -279,16 +287,16 @@ struct gpuUpdatePlan * gpuUpdatePlanCreate(int mp, int nn, int jb)
     if ( (gpu_ready( &(plan->availMemory) ) == gpuPass) && (mp > 0) ) {
         plan->strategy = gpuBoth;
 
-        gpuQ( gpu_malloc2D( mp, jb, &(plan->gL2) ) );
-        gpuQ( gpu_malloc2D( jb, nn, &(plan->gA) ) );
-        gpuQ( gpu_malloc2D( jb, jb, &(plan->gL1) ) );
+        gpuQ( gpu_malloc2D( mp, jb, sizeof(double), &(plan->gL2) ) );
+        gpuQ( gpu_malloc2D( jb, nn, sizeof(double), &(plan->gA) ) );
+        gpuQ( gpu_malloc2D( jb, jb, sizeof(double), &(plan->gL1) ) );
 
         int memused = plan->gL2.size + plan->gA.size + plan->gL1.size;
 
         plan->nntot = nn;
         plan->nnmax = (plan->availMemory - memused) / (sizeof(double) * (plan->gL2.lda + plan->gA.lda + plan->gL1.lda));
 
-        gpuQ( gpu_malloc2D( mp, plan->nnmax, &(plan->gA2) ) );
+        gpuQ( gpu_malloc2D( mp, plan->nnmax, sizeof(double), &(plan->gA2) ) );
             
         const int tune0 = 6, tune1 = 7;
         int nhat = (32*tune0)*(plan->nnmax/(32*tune1));

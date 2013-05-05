@@ -63,8 +63,8 @@ void gpu_pdupdateTT(struct gpuUpdatePlan * plan ,
 {
    const double plus_one = HPL_rone, minus_one = -HPL_rone;
 
-   gpu_upload(jb, nn, &(plan->gA), Aptr, lda);
-   gpu_upload(jb, jb, &(plan->gL1), L1ptr, jb);
+   gpu_upload(jb, nn, sizeof(double), &(plan->gA), Aptr, lda);
+   gpu_upload(jb, jb, sizeof(double), &(plan->gL1), L1ptr, jb);
 
    cublasQ( cublasDtrsm(cublas_handle(),
                CUBLAS_SIDE_LEFT, /* 'L' */
@@ -72,10 +72,11 @@ void gpu_pdupdateTT(struct gpuUpdatePlan * plan ,
                CUBLAS_OP_T, /* 'T' */
                CUBLAS_DIAG_UNIT, /* 'U' */ 
                jb, nn, &plus_one, 
-               plan->gL1.ptr, plan->gL1.lda, plan->gA.ptr, plan->gA.lda ) );
+               (double*)plan->gL1.ptr, plan->gL1.lda, 
+               (double*)plan->gA.ptr, plan->gA.lda ) );
 
-   gpu_download(jb, nn, Aptr, lda, &(plan->gA));
-   gpu_upload(mp, jb, &(plan->gL2), L2ptr, ldl2);
+   gpu_download(jb, nn, sizeof(double), Aptr, lda, &(plan->gA));
+   gpu_upload(mp, jb, sizeof(double), &(plan->gL2), L2ptr, ldl2);
 
    int iternum = 0;
    int N0 = 0;
@@ -95,21 +96,21 @@ void gpu_pdupdateTT(struct gpuUpdatePlan * plan ,
                    iternum, N0, N1, N2);
 #endif
 
-       gpu_upload(mp, N1, &(plan->gA2), Mptr(Aptr, jb, N0, lda), lda);
+       gpu_upload(mp, N1, sizeof(double), &(plan->gA2), Mptr(Aptr, jb, N0, lda), lda);
 
        cublasQ( cublasDgemm(cublas_handle(),
                 CUBLAS_OP_N, /* 'N' */
                 CUBLAS_OP_N, /* 'N' */ 
                 mp, N1, jb, 
-                &minus_one, plan->gL2.ptr, plan->gL2.lda, 
-                Mptr( plan->gA.ptr, 0, N0, plan->gA.lda ), plan->gA.lda, 
-                &plus_one, plan->gA2.ptr, plan->gA2.lda ) );
+                &minus_one, (double *)plan->gL2.ptr, plan->gL2.lda, 
+                Mptr( (double*)plan->gA.ptr, 0, N0, plan->gA.lda ), plan->gA.lda, 
+                &plus_one, (double*)plan->gA2.ptr, plan->gA2.lda ) );
 
        HPL_dgemm( HplColumnMajor, HplNoTrans, HplNoTrans, mp, N2, jb,
                -HPL_rone, L2ptr, ldl2, Mptr( Aptr, 0, N0+N1, lda ), lda,
                 HPL_rone, Mptr( Aptr, jb, N0+N1, lda ), lda );
 
-       gpu_download(mp, N1, Mptr( Aptr, jb, N0, lda), lda, &(plan->gA2));
+       gpu_download(mp, N1, sizeof(double), Mptr( Aptr, jb, N0, lda), lda, &(plan->gA2));
 
        N0 += N1 + N2;
        iternum++;
@@ -174,7 +175,6 @@ void HPL_pdupdateTT
                              nq0, nn, test;
    static int                tswap = 0;
    static HPL_T_SWAP         fswap = HPL_NO_SWP;
-   const double              plus_one = HPL_rone, minus_one = -HPL_rone;
 
 #define LDU                  n
 /* ..
@@ -265,10 +265,11 @@ void HPL_pdupdateTT
 #ifdef HPL_CUDA_DIAGNOSTICS
          HPL_fprintf(stderr, 
                "%s {%d}: "
+               "dlaswp00N (m=%d, n=%d) "
                "dtrsmLUTU (m=%d,n=%d), "
                "dgemmNN (m=%d,n=%d,k=%d)\n", 
                __FILE__, __LINE__, 
-               jb, nn, mp, nn, jb);
+               jb, nn, jb, nn, mp, nn, jb);
 #endif
          struct gpuUpdatePlan * plan = gpuUpdatePlanCreate(mp, nn, jb);
 
