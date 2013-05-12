@@ -254,14 +254,6 @@ void HPL_pdupdateTT
        */
       if( ( nn = n - nq0 ) > 0 )
       {
-#ifdef HPL_DETAILED_TIMING
-         HPL_ptimer( HPL_TIMING_LASWP );
-         HPL_dlaswp00N( jb, nn, Aptr, lda, ipiv );
-         HPL_ptimer( HPL_TIMING_LASWP );
-#else
-         HPL_dlaswp00N( jb, nn, Aptr, lda, ipiv );
-#endif
-
 #ifdef HPL_CUDA_DIAGNOSTICS
          HPL_fprintf(stderr, 
                "%s {%d}: "
@@ -271,6 +263,20 @@ void HPL_pdupdateTT
                __FILE__, __LINE__, 
                jb, nn, jb, nn, mp, nn, jb);
 #endif
+#ifdef HPL_DETAILED_TIMING
+         HPL_ptimer( HPL_TIMING_LASWP );
+         HPL_dlaswp00N( jb, nn, Aptr, lda, ipiv );
+         HPL_ptimer( HPL_TIMING_LASWP );
+#else
+         int row;
+         for(row=0; row<jb; row++) {
+             HPL_fprintf(stderr, "%d:%d\n", row, ipiv[row]);
+         }
+         HPL_dlaprnt( PANEL->m, PANEL->n, Aptr, 0, 0, lda, "A before");
+         HPL_dlaswp00N( jb, nn, Aptr, lda, ipiv );
+         HPL_dlaprnt( PANEL->m, PANEL->n, Aptr, 0, 0, lda, "A after");
+#endif
+
          struct gpuUpdatePlan * plan = gpuUpdatePlanCreate(mp, nn, jb);
 
          if (plan->strategy != gpuNone) {

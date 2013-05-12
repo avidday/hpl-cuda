@@ -1,6 +1,7 @@
 /*
  * -- High Performance Computing Linpack Benchmark for CUDA
  *    hpl-cuda - 0.001 - 2010
+ *    hpl-cuda - 0.002 - 2013
  *
  *    David Martin (cuda@avidday.net)
  *    (C) Copyright 2010-2011 All Rights Reserved

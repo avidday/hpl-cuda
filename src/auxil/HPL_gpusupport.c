@@ -42,7 +42,7 @@
 #include "hpl.h"
 #include "hpl_gpusupport.h"
 
-const size_t MB = 1<<20;
+const size_t eightMB = 1<<23;
 static size_t reserved, allocated;
 static char *pool = NULL;
 static int initialised = gpuWarn;
@@ -160,8 +160,8 @@ int gpu_init( char warmup )
 #ifdef HPL_CUDA_DIAGNOSTICS
     HPL_fprintf(stderr, "HPL_gpusupport.c: trying to reserve %d memory\n", reserved);
 #endif
-        reserved -= MB;
-        if( reserved < MB )
+        reserved -= eightMB;
+        if( reserved < eightMB )
         {
             gpuQ( cublasDestroy( cublas_cntxt ) );
             initialised = gpuFail;
