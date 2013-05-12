@@ -268,13 +268,7 @@ void HPL_pdupdateTT
          HPL_dlaswp00N( jb, nn, Aptr, lda, ipiv );
          HPL_ptimer( HPL_TIMING_LASWP );
 #else
-         int row;
-         for(row=0; row<jb; row++) {
-             HPL_fprintf(stderr, "%d:%d\n", row, ipiv[row]);
-         }
-         HPL_dlaprnt( PANEL->m, PANEL->n, Aptr, 0, 0, lda, "A before");
          HPL_dlaswp00N( jb, nn, Aptr, lda, ipiv );
-         HPL_dlaprnt( PANEL->m, PANEL->n, Aptr, 0, 0, lda, "A after");
 #endif
 
          struct gpuUpdatePlan * plan = gpuUpdatePlanCreate(mp, nn, jb);
