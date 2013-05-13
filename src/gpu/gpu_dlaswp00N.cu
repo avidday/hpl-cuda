@@ -129,9 +129,9 @@ void destroy_laswp00N_plan(struct laswp00N_plan &plan)
     plan.npasses = -1;
 }
 
-extern "C"
+template<typename Real>
 __host__
-void gpu_slaswp00N( struct gpuArray *A, const int M, const int N,
+void driver_laswp00N( struct gpuArray *A, const int M, const int N,
                     const int *IPIV, const int NB, cudaStream_t stream)
 {
     if ( (M <= 0) || (N <= 0) || (NB <= 0) ) return;
@@ -147,13 +147,13 @@ void gpu_slaswp00N( struct gpuArray *A, const int M, const int N,
     const int nthreads = 128, blocksmax = 8 * 16;
     dim3 blocksize = dim3(nthreads);
 
-    float *_A = (float *)A->ptr;
+    Real *_A = (Real *)A->ptr;
     int lda = A->lda;
     for(int i=0, p=0; i<plan.npasses; i++) {
         int2 *_ipivot = (int2 *)_pivot.ptr + p;
         int n = plan.pos[i] - p;
         dim3 gridsize = max((n/nthreads) + ((n%nthreads) > 0) ? 1 : 0, blocksmax);
-        kernel_laswp00N<float><<<gridsize, blocksize, size_t(0), stream>>>(_A, M, N, lda, _ipivot, n);
+        kernel_laswp00N<Real><<<gridsize, blocksize, size_t(0), stream>>>(_A, M, N, lda, _ipivot, n);
         gpuQ( cudaPeekAtLastError() );
         p = plan.pos[i];
     }
@@ -162,37 +162,21 @@ void gpu_slaswp00N( struct gpuArray *A, const int M, const int N,
 
 }
 
+extern "C"
+__host__
+void gpu_slaswp00N( struct gpuArray *A, const int M, const int N,
+                    const int *IPIV, const int NB, cudaStream_t stream)
+{
+    return driver_laswp00N<float>(A, M, N, IPIV, NB, stream);
+
+}
 #if __CUDA_ARCH__ >= 130 
 extern "C"
 __host__
 void gpu_dlaswp00N( struct gpuArray *A, const int M, const int N,
                     const int *IPIV, const int NB, cudaStream_t stream)
 {
-    if ( (M <= 0) || (N <= 0) || (NB <= 0) ) return;
-
-    struct laswp00N_plan plan;
-
-    create_laswp00n_plan(plan, M, NB, IPIV );
-
-    gpuArray _pivot;
-    gpu_malloc2D(NB, 1, sizeof(int2), &_pivot);
-    gpu_upload(NB, 1, sizeof(int2), &_pivot, &plan.pivot[0], NB);
-
-    const int nthreads = 128, blocksmax = 8 * 16;
-    dim3 blocksize = dim3(nthreads);
-
-    double *_A = (double *)A->ptr;
-    int lda = A->lda;
-    for(int i=0, p=0; i<plan.npasses; i++) {
-        int2 *_ipivot = (int2 *)_pivot.ptr + p;
-        int n = plan.pos[i] - p;
-        dim3 gridsize = max((n/nthreads) + ((n%nthreads) > 0) ? 1 : 0, blocksmax);
-        kernel_laswp00N<double><<<gridsize, blocksize, size_t(0), stream>>>(_A, M, N, lda, _ipivot, n);
-        gpuQ( cudaPeekAtLastError() );
-        p = plan.pos[i];
-    }
-
-    destroy_laswp00N_plan(plan);
+    return driver_laswp00N<double>(A, M, N, IPIV, NB, stream);
 
 }
 #endif
